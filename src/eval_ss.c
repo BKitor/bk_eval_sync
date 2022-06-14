@@ -2,28 +2,42 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-// #define BK_ITTERS 1000
-#define BK_ITTERS 100
 
 int mca_coll_bkpap_arrive_ss();
 
 int main(int argc, char** argv) {
+	bk_exp_flags_t* flags;
 	int ret = MPI_SUCCESS;
+	double exp_time = 0;
 
-	ret = bk_init(&argc, &argv);
+	ret = bk_init(argc, argv);
 	BK_MPI_CHK(ret, bk_main_abort);
+	flags = &bk_config.exp_flags;
+
+	if (1 == bk_config.exp_flags.print_help) {
+		if (0 == bk_config.mpi_rank)bk_print_help_message();
+		return 0;
+	}
+
 	ret = bk_wireup_ucp();
 	BK_MPI_CHK(ret, bk_main_abort);
 
-	for (int i = 0; i < BK_ITTERS; i++) {
+	for (int bmark_itter = 0; bmark_itter < flags->num_itters + flags->num_warmups; bmark_itter++) {
+		int64_t reply_buffer;
+		double s_time, e_time;
+		int exp_num = bmark_itter - flags->num_warmups;
+
 		ret = MPI_Barrier(MPI_COMM_WORLD);
 		BK_MPI_CHK(ret, bk_main_abort);
 
-		int64_t reply_buffer, val_buf = 1;
-		
+		// Measure execution 
+		s_time = MPI_Wtime();
 		ret = mca_coll_bkpap_arrive_ss(&reply_buffer);
+		e_time = MPI_Wtime();
 		BK_MPI_CHK(ret, bk_main_abort);
 
+		// Complete ensure all procs exit, 
+		// necesary for SHM transport, most likely useless for IB
 		MPI_Request ibarrier_req;
 		int ibarrier_flag;
 		ret = MPI_Ibarrier(MPI_COMM_WORLD, &ibarrier_req);
@@ -37,13 +51,26 @@ int main(int argc, char** argv) {
 		ret = MPI_Barrier(MPI_COMM_WORLD);
 		BK_MPI_CHK(ret, bk_main_abort);
 
-		BK_OUT("reply_buffer: %ld", reply_buffer);
-		if (0 == bk_config.mpi_rank) {
-			BK_OUT("counter: %ld", *(int64_t*)bk_config.loc_ss.counter_addr);
+		// if not on a warmup run
+		if (exp_num >= 0) {
+			double run_time = (e_time - s_time) * 1e6;
+			exp_time += run_time / ((double)flags->num_itters);
+			if (flags->verbosity > 0) {
+				BK_OUT("iter: %d, time: %fus", exp_num, run_time);
+			}
 		}
-		if(0 == bk_config.mpi_rank)bk_reset_local();
+
+		if (0 == bk_config.mpi_rank)bk_reset_local();
 		fflush(stdout);
 	}
+
+	double global_exp_time;
+	ret = MPI_Reduce(&exp_time, &global_exp_time, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+	BK_MPI_CHK(ret, bk_main_abort);
+	global_exp_time /= bk_config.mpi_size;
+
+	if (0 == bk_config.mpi_rank)
+		BK_OUT("num ranks: %d, num_itters: %d,  num_warmups: %d, avg_time %fus", bk_config.mpi_size, flags->num_itters, flags->num_warmups, global_exp_time);
 
 	ret = bk_finalize();
 	BK_MPI_CHK(ret, bk_main_abort);

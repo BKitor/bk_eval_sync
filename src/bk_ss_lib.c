@@ -1,14 +1,41 @@
 #include <bk_ss_lib.h>
+#include <getopt.h>
+#include <string.h>
 
-int bk_init(int* argc_ptr, char*** argv_ptr) {
+bk_exp_flags_t default_flags = {
+	.print_help = 0,
+	.num_itters = 10,
+	.num_warmups = 1,
+	.max_delay = 0,
+	.verbosity = 0,
+};
+
+bk_synctest_config_t bk_config = {
+	.ucp_context = NULL,
+	.ucp_worker = NULL,
+	.ucp_address = NULL,
+	.ucp_address_len = -1,
+	.ucp_ep = NULL,
+	.loc_ss = {0},
+	.remote_ss = {0},
+	.exp_flags = {0},
+	.mpi_rank = -1,
+	.mpi_size = -1,
+};
+
+int bk_init(int argc, char** argv) {
 	int thrd_prov, ret = MPI_SUCCESS;
 	ucs_status_t stat = UCS_OK;
+	memcpy(&bk_config.exp_flags, &default_flags, sizeof(bk_config.exp_flags));
 
 	// init MPI 
-	ret = MPI_Init_thread(argc_ptr, argv_ptr, MPI_THREAD_MULTIPLE, &thrd_prov);
+	ret = MPI_Init_thread(&argc, &argv, MPI_THREAD_MULTIPLE, &thrd_prov);
 	ret = MPI_Comm_rank(MPI_COMM_WORLD, &bk_config.mpi_rank);
 	BK_MPI_CHK(ret, bk_abort_init);
 	ret = MPI_Comm_size(MPI_COMM_WORLD, &bk_config.mpi_size);
+	BK_MPI_CHK(ret, bk_abort_init);
+
+	ret = process_cmd_flags(argc, argv, &bk_config.exp_flags);
 	BK_MPI_CHK(ret, bk_abort_init);
 
 	// init UCP
@@ -211,8 +238,72 @@ int bk_reset_local() {
 	bk_local_ss_t* loc_ss = &bk_config.loc_ss;
 	int64_t* cnt = (int64_t*)loc_ss->counter_addr, * arr = (int64_t*)loc_ss->arr_addr;
 	*cnt = -1;
-	for(int i = 0; i<bk_config.mpi_size; i++){
+	for (int i = 0; i < bk_config.mpi_size; i++) {
 		arr[i] = -1;
 	}
 	return MPI_SUCCESS;
+}
+
+int check_str_num(const char* str, int ll, int ul, int* val){
+	*val = atoi(str);
+	return (*val < ll || *val > ul)? MPI_ERR_ARG:MPI_SUCCESS ;
+}
+
+
+int process_cmd_flags(int argc, char* argv[], bk_exp_flags_t* flags) {
+	extern char* optarg;
+	extern int optind, optopt;
+	char const* optstring = NULL;
+	int c, ret = MPI_SUCCESS;
+	int option_index = 0;
+
+	static struct option long_options[] = {
+			{"help",            no_argument,        0,  'h'},
+			{"iterations",      required_argument,  0,  'i'},
+			{"warmup",          required_argument,  0,  'x'},
+			{"max-delay",       required_argument,  0,  'd'},
+			{"verbose",         required_argument,  0,  'v'},
+	};
+	optstring = "+hi:x:d:v:";
+
+	while (-1 != (c = getopt_long(argc, argv, optstring, long_options, &option_index))) {
+		switch (c) {
+			case'h':
+				flags->print_help = 1;
+				return MPI_SUCCESS;
+			case'i':
+				ret = check_str_num(optarg, 1, 100000, &flags->num_itters);
+				break;
+			case'x':
+				ret = check_str_num(optarg, 0, 10000, &flags->num_warmups);
+				break;
+			case'd':
+				ret = check_str_num(optarg, 0, 500, &flags->max_delay);
+				break;
+			case 'v':
+				ret = check_str_num(optarg, 0, 100, &flags->verbosity);
+				break;
+			default:
+				ret = MPI_ERR_ARG;
+				break;
+		}
+		if(MPI_SUCCESS != ret){
+			BK_ERROR("Bad Arg -%c %s", c, optarg);
+			return ret;
+		}
+	}
+	return ret;
+}
+
+void bk_print_help_message(){
+	char*out_str = 
+		"\nBK_SYNCSTRUCTURE_BENCHMARK\n"
+		"--------------------------\n"
+		"-h/--help				Print help message.\n"
+		"-i/--iterations <>		Numer of benchmark iterations\n"
+		"-x/--warmup <>			Number of warmup iterations\n"
+		"-d/--max-delay <>		Max delay to apply, similar to MIF, but in us\n"
+		"-v/--verbosity <>		Output verbosity\n"
+	;
+	fprintf(stdout, "%s", out_str);
 }

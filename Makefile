@@ -26,7 +26,7 @@ $(BINDIR)/eval_ss: $(OBJ)
 .PHONY: clean test
 
 clean:
-	rm $(ODIR)/*.o $(BINDIR)/*
+	rm $(ODIR)/*.o $(BINDIR)/* *.btr
 
 test: $(BINDIR)/eval_ss
 	mpirun -n 4 ./bin/eval_ss

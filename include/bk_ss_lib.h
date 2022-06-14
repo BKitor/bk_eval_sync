@@ -2,6 +2,7 @@
 #include "mpi.h"
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 
 #define BK_OUT(_str,...) printf("BK_OUT rank: %d: "_str"\n", bk_config.mpi_rank, ##__VA_ARGS__);
 #define BK_ERROR(_str,...) fprintf(stderr, "BK_ERROR (rank: %d) %s:%d : "_str"\n",bk_config.mpi_rank, __FILE__, __LINE__, ##__VA_ARGS__);
@@ -43,6 +44,15 @@ typedef struct bk_remote_ss {
 	ucp_rkey_h arr_rkey;
 } bk_remote_ss_t;
 
+typedef struct bk_exp_flags {
+	bool print_help;
+	int num_itters;
+	int num_warmups;
+	int max_delay;
+	int verbosity;
+} bk_exp_flags_t;
+
+
 typedef struct bk_synctest_config {
 	ucp_context_h ucp_context;
 	ucp_worker_h ucp_worker;
@@ -53,11 +63,14 @@ typedef struct bk_synctest_config {
 	bk_local_ss_t loc_ss;
 	bk_remote_ss_t remote_ss;
 
+	bk_exp_flags_t exp_flags;
+
 	int mpi_rank;
 	int mpi_size;
 } bk_synctest_config_t;
 
-bk_synctest_config_t bk_config;
+extern bk_synctest_config_t bk_config;
+extern bk_exp_flags_t default_flags;
 
 typedef struct bk_req {
 	ucs_status_t status;
@@ -66,9 +79,11 @@ typedef struct bk_req {
 
 void bk_req_init(void* req);
 
-int bk_init(int* argc_ptr, char*** argv_ptr);
+int bk_init(int argc_ptr, char** argv_ptr);
 int bk_wireup_ucp();
 int bk_finalize();
 int bk_reset_local();
+void bk_print_help_message();
 ucs_status_t _bk_poll_completion(ucs_status_ptr_t status_ptr);
 void _bk_send_cb(void* request, ucs_status_t status, void* args);
+int process_cmd_flags(int argc, char* argv[], bk_exp_flags_t* flags);
