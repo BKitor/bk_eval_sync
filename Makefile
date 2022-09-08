@@ -29,4 +29,5 @@ clean:
 	rm $(ODIR)/*.o $(BINDIR)/* *.btr
 
 test: $(BINDIR)/eval_ss
-	mpirun -n 4 ./bin/eval_ss
+	mpirun -n 4 ./bin/eval_ss 
+	mpirun -n 4 ./bin/eval_ss -e 1
