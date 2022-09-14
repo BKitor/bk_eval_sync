@@ -223,11 +223,15 @@ int mca_coll_bkpap_arrive_mpi_ss(int64_t* ret_pos, bk_synctest_config_t* bk_cfg)
 
 	int64_t orig = 1, res, rank = bk_cfg->mpi_rank;
 
+	MPI_Win_lock(MPI_LOCK_EXCLUSIVE, 0, 0, bk_cfg->mpi_cnt_win);
 	MPI_Fetch_and_op(&orig, &res, MPI_INT64_T, 0, 0, MPI_SUM, bk_cfg->mpi_cnt_win);
+	MPI_Win_unlock(0, bk_cfg->mpi_cnt_win);
 
 	res++;
 
+	MPI_Win_lock(MPI_LOCK_EXCLUSIVE, 0, 0, bk_cfg->mpi_arr_win);
 	MPI_Fetch_and_op(&rank, &orig, MPI_INT64_T, 0, res, MPI_REPLACE, bk_cfg->mpi_arr_win);
+	MPI_Win_unlock(0, bk_cfg->mpi_arr_win);
 
 mca_coll_bkpap_arrive_mpi_ss_abort:
 	return ret;

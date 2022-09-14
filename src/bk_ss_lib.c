@@ -336,13 +336,15 @@ void bk_print_help_message() {
 int bk_mpi_wireup(bk_synctest_config_t* cfg) {
 	int ret = MPI_SUCCESS;
 
-	MPI_Aint win_size = (0 == cfg->mpi_rank) ? sizeof(int64_t) : 0;
+	/* MPI_Aint win_size = (0 == cfg->mpi_rank) ? sizeof(int64_t) : 0; */
+	MPI_Aint win_size = sizeof(int64_t);
 	MPI_Aint win_disp = sizeof(int64_t);
 
 	ret = MPI_Win_allocate(win_size, win_disp, MPI_INFO_NULL, MPI_COMM_WORLD, &cfg->mpi_cnt_baseptr, &cfg->mpi_cnt_win);
 	BK_MPI_CHK(ret, bk_mpi_wireup_abort);
 
-	win_size = (0 == cfg->mpi_rank) ? sizeof(int64_t) * cfg->mpi_size : 0;
+	/* win_size = (0 == cfg->mpi_rank) ? sizeof(int64_t) * cfg->mpi_size : 0; */
+	win_size = sizeof(int64_t) * cfg->mpi_size; 
 	win_disp = sizeof(int64_t);
 	ret = MPI_Win_allocate(win_size, win_disp, MPI_INFO_NULL, MPI_COMM_WORLD, &cfg->mpi_arr_baseptr, &cfg->mpi_arr_win);
 	BK_MPI_CHK(ret, bk_mpi_wireup_abort);
