@@ -384,7 +384,7 @@ int bk_mpi_reset_local(bk_synctest_config_t* bk_cfg) {
 		}
 
 		// BK_OUT("%ld, [%ld %ld %ld %ld]", *tmp, tmp2[0], tmp2[1], tmp2[2], tmp2[3]);
-		BK_OUT("%ld, [ %s]", *tmp, outstr);
+		BK_OUT("validate: %ld, [ %s]", *tmp, outstr);
 		free(outstr);
 	}
 

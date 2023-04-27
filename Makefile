@@ -29,5 +29,6 @@ clean:
 	rm $(ODIR)/*.o $(BINDIR)/* *.btr
 
 test: $(BINDIR)/eval_ss
-	mpirun -n 4 --mca osc ucx ./bin/eval_ss 
-	mpirun -n 4 --mca osc ucx ./bin/eval_ss -e 1
+	mpirun -n 4 --mca osc ucx ./bin/eval_ss -e 0 -v 1
+	mpirun -n 4 --mca osc ucx ./bin/eval_ss -e 1 -v 1
+	mpirun -n 4 --mca osc ucx ./bin/eval_ss -e 2 -v 1

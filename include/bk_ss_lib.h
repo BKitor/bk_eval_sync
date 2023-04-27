@@ -28,6 +28,7 @@
 typedef enum bk_exp_type {
 	BK_EXP_UCP_ATOMIC = 0,
 	BK_EXP_MPI_LOCK = 1,
+	BK_EXP_MPI_LOCK_ALL = 2,
 	BK_EXP_COUNT,
 }bk_exp_type;
 

@@ -4,9 +4,11 @@
 
 int bk_run_ucp_experiment(bk_synctest_config_t* bk_cfg);
 int bk_run_mpi_experiment(bk_synctest_config_t* bk_cfg);
+int bk_run_mpi_all_experiment(bk_synctest_config_t* bk_cfg);
 
 int mca_coll_bkpap_arrive_ucp_ss(int64_t* ret_pos, bk_synctest_config_t* bk_cfg);
 int mca_coll_bkpap_arrive_mpi_ss(int64_t* ret_pos, bk_synctest_config_t* bk_cfg);
+int mca_coll_bkpap_arrive_mpi_all_ss(int64_t* ret_pos, bk_synctest_config_t* bk_cfg);
 
 int main(int argc, char** argv) {
 	bk_synctest_config_t bk_cfg;
@@ -24,11 +26,18 @@ int main(int argc, char** argv) {
 
 	switch (flags->experiment) {
 	case BK_EXP_UCP_ATOMIC:
+		BK_OUT("running exp ucp");
 		ret = bk_run_ucp_experiment(&bk_cfg);
 		break;
 
 	case BK_EXP_MPI_LOCK:
+		BK_OUT("running exp mpi_lock");
 		ret = bk_run_mpi_experiment(&bk_cfg);
+		break;
+
+	case BK_EXP_MPI_LOCK_ALL:
+		BK_OUT("running exp mpi_lock_all");
+		ret = bk_run_mpi_all_experiment(&bk_cfg);
 		break;
 
 	default:
@@ -232,6 +241,87 @@ int mca_coll_bkpap_arrive_mpi_ss(int64_t* ret_pos, bk_synctest_config_t* bk_cfg)
 	MPI_Win_lock(MPI_LOCK_EXCLUSIVE, 0, 0, bk_cfg->mpi_arr_win);
 	MPI_Fetch_and_op(&rank, &orig, MPI_INT64_T, 0, res, MPI_REPLACE, bk_cfg->mpi_arr_win);
 	MPI_Win_unlock(0, bk_cfg->mpi_arr_win);
+
+mca_coll_bkpap_arrive_mpi_ss_abort:
+	return ret;
+}
+
+int bk_run_mpi_all_experiment(bk_synctest_config_t* bk_cfg) {
+	int ret = MPI_SUCCESS;
+	double exp_time = 0.0;
+	bk_exp_flags_t* flags = &bk_cfg->exp_flags;
+
+	ret = bk_mpi_wireup(bk_cfg);
+	BK_MPI_CHK(ret, bk_run_mpi_experiment_abort);
+
+	MPI_Win_lock_all(0, bk_cfg->mpi_cnt_win);
+	MPI_Win_lock_all(0, bk_cfg->mpi_arr_win);
+
+	for (int bmark_itter = 0; bmark_itter < flags->num_itters + flags->num_warmups; bmark_itter++) {
+		int64_t reply_buffer;
+		double s_time, e_time;
+		int exp_num = bmark_itter - flags->num_warmups;
+
+		ret = MPI_Barrier(MPI_COMM_WORLD);
+		BK_MPI_CHK(ret, bk_run_mpi_experiment_abort);
+
+		// Measure execution 
+		s_time = MPI_Wtime();
+		ret = mca_coll_bkpap_arrive_mpi_all_ss(&reply_buffer, bk_cfg);
+		e_time = MPI_Wtime();
+		BK_MPI_CHK(ret, bk_run_mpi_experiment_abort);
+
+		ret = MPI_Barrier(MPI_COMM_WORLD);
+		BK_MPI_CHK(ret, bk_run_mpi_experiment_abort);
+
+		// if not on a warmup run
+		if (exp_num >= 0) {
+			double run_time = (e_time - s_time) * 1e6;
+			exp_time += run_time / ((double)flags->num_itters);
+			if (flags->verbosity > 0) {
+				BK_OUT("iter: %d, time: %fus", exp_num, run_time);
+			}
+		}
+
+		if (0 == bk_cfg->mpi_rank)bk_mpi_reset_local(bk_cfg);
+		fflush(stdout);
+	}
+
+	MPI_Win_unlock_all(bk_cfg->mpi_cnt_win);
+	MPI_Win_unlock_all(bk_cfg->mpi_arr_win);
+
+	double global_exp_time;
+	ret = MPI_Reduce(&exp_time, &global_exp_time, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
+	BK_MPI_CHK(ret, bk_run_mpi_experiment_abort);
+	global_exp_time /= bk_cfg->mpi_size;
+
+	if (0 == bk_cfg->mpi_rank)
+		BK_OUT("num ranks: %d, exp: %d, num_itters: %d,  num_warmups: %d, avg_time %fus", bk_cfg->mpi_size, flags->experiment, flags->num_itters, flags->num_warmups, global_exp_time);
+
+	BK_MPI_CHK(ret, bk_run_mpi_experiment_abort);
+
+	ret = bk_mpi_teardown(bk_cfg);
+	BK_MPI_CHK(ret, bk_run_mpi_experiment_abort);
+
+bk_run_mpi_experiment_abort:
+	return ret;
+}
+
+int mca_coll_bkpap_arrive_mpi_all_ss(int64_t* ret_pos, bk_synctest_config_t* bk_cfg) {
+	int ret = MPI_SUCCESS;
+	BK_MPI_CHK(ret, mca_coll_bkpap_arrive_mpi_ss_abort);
+
+	int64_t orig = 1, res, rank = bk_cfg->mpi_rank;
+
+
+	MPI_Fetch_and_op(&orig, &res, MPI_INT64_T, 0, 0, MPI_SUM, bk_cfg->mpi_cnt_win);
+	MPI_Win_flush_local(0,bk_cfg->mpi_cnt_win); 
+
+	res++;
+
+	MPI_Fetch_and_op(&rank, &orig, MPI_INT64_T, 0, res, MPI_REPLACE, bk_cfg->mpi_arr_win);
+	MPI_Win_flush(0,bk_cfg->mpi_cnt_win); 
+
 
 mca_coll_bkpap_arrive_mpi_ss_abort:
 	return ret;
